@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import axios from "axios";
+import { useToast } from "../hooks/useToast";
 import "../styles/Login.css";
 
 export default function Login() {
@@ -7,6 +8,7 @@ export default function Login() {
   const [email, setEmail] = useState("phosiwak@gmail.com");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const toast = useToast();
 
   // Handle form submission
   async function submit(e: React.FormEvent) {
@@ -25,11 +27,18 @@ export default function Login() {
       // Store the access token in localStorage
       localStorage.setItem("accessToken", res.data.accessToken);
 
+      // Show success toast and redirect
+      toast.success("Login successful! Redirecting...");
+
       // Redirect the user to the /orders page
-      window.location.href = "/orders";
+      setTimeout(() => {
+        window.location.href = "/orders";
+      }, 500);
     } catch {
       // If login fails, show an error message
-      setError("Login failed. Please check your email.");
+      const errorMsg = "Login failed. Please check your email.";
+      setError(errorMsg);
+      toast.error(errorMsg);
     } finally {
       // Reset loading state
       setLoading(false);

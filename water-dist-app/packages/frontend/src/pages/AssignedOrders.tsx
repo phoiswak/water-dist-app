@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { useToast } from "../hooks/useToast";
 import "../styles/AssignedOrders.css";
 
 // Define the Order type for TypeScript
@@ -25,6 +26,7 @@ export default function AssignedOrders() {
   const [showDeliveredModal, setShowDeliveredModal] = useState<boolean>(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [rejectReason, setRejectReason] = useState<string>("");
+  const toast = useToast();
 
   // Get token helper
   const getToken = () => localStorage.getItem("accessToken");
@@ -74,9 +76,10 @@ export default function AssignedOrders() {
       );
 
       setShowAcceptModal(false);
+      toast.success("Order accepted successfully!");
       await loadOrders();
     } catch (err: any) {
-      alert(err.response?.data?.error || "Failed to accept order");
+      toast.error(err.response?.data?.error || "Failed to accept order");
     } finally {
       setActionLoading(null);
     }
@@ -103,10 +106,10 @@ export default function AssignedOrders() {
       );
 
       setShowRejectModal(false);
+      toast.success("Order rejected. It will be reassigned.");
       await loadOrders();
-      alert("Order rejected. It will be reassigned.");
     } catch (err: any) {
-      alert(err.response?.data?.error || "Failed to reject order");
+      toast.error(err.response?.data?.error || "Failed to reject order");
     } finally {
       setActionLoading(null);
     }
@@ -141,9 +144,14 @@ export default function AssignedOrders() {
       if (newStatus === "picked_up") setShowPickupModal(false);
       if (newStatus === "delivered") setShowDeliveredModal(false);
 
+      const statusMessages: Record<string, string> = {
+        "picked_up": "Order marked as picked up!",
+        "delivered": "Order marked as delivered!",
+      };
+      toast.success(statusMessages[newStatus] || "Status updated successfully!");
       await loadOrders();
     } catch (err: any) {
-      alert(err.response?.data?.error || "Failed to update status");
+      toast.error(err.response?.data?.error || "Failed to update status");
     } finally {
       setActionLoading(null);
     }
@@ -160,9 +168,9 @@ export default function AssignedOrders() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      alert("Invoice generated and sent to customer!");
+      toast.success("Invoice generated and sent to customer!");
     } catch (err: any) {
-      alert(err.response?.data?.error || "Failed to generate invoice");
+      toast.error(err.response?.data?.error || "Failed to generate invoice");
     } finally {
       setActionLoading(null);
     }
