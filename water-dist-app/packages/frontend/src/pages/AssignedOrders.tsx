@@ -1,19 +1,33 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
+import axios, { AxiosError } from "axios";
 import { useToast } from "../hooks/useToast";
+import { AcceptOrderModal } from "../components/modals/AcceptOrderModal";
+import { RejectOrderModal } from "../components/modals/RejectOrderModal";
+import { PickupModal } from "../components/modals/PickupModal";
+import { DeliveredModal } from "../components/modals/DeliveredModal";
+import { InvoiceModal } from "../components/modals/InvoiceModal";
+import type { Order } from "../types/Order";
 import "../styles/AssignedOrders.css";
 
-// Define the Order type for TypeScript
-type Order = {
-  id: string;
-  woo_order_id: string;
-  customer_name: string;
-  customer_phone: string;
-  address_text: string;
-  amount_total: string;
-  status: string;
-  created_at: string;
-};
+// Helper function to extract error message
+function getErrorMessage(error: unknown): string {
+  if (error instanceof AxiosError) {
+    const responseData = error.response?.data as Record<string, unknown> | undefined;
+    if (responseData?.error && typeof responseData.error === "string") {
+      return responseData.error;
+    }
+    if (responseData?.message && typeof responseData.message === "string") {
+      return responseData.message;
+    }
+    if (error.message) {
+      return error.message;
+    }
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "An unknown error occurred";
+}
 
 export default function AssignedOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -24,6 +38,7 @@ export default function AssignedOrders() {
   const [showAcceptModal, setShowAcceptModal] = useState<boolean>(false);
   const [showPickupModal, setShowPickupModal] = useState<boolean>(false);
   const [showDeliveredModal, setShowDeliveredModal] = useState<boolean>(false);
+  const [showInvoiceModal, setShowInvoiceModal] = useState<boolean>(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [rejectReason, setRejectReason] = useState<string>("");
   const toast = useToast();
@@ -78,8 +93,8 @@ export default function AssignedOrders() {
       setShowAcceptModal(false);
       toast.success("Order accepted successfully!");
       await loadOrders();
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || "Failed to accept order");
+    } catch (err) {
+      toast.error(getErrorMessage(err) || "Failed to accept order");
     } finally {
       setActionLoading(null);
     }
@@ -108,8 +123,8 @@ export default function AssignedOrders() {
       setShowRejectModal(false);
       toast.success("Order rejected. It will be reassigned.");
       await loadOrders();
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || "Failed to reject order");
+    } catch (err) {
+      toast.error(getErrorMessage(err) || "Failed to reject order");
     } finally {
       setActionLoading(null);
     }
@@ -150,27 +165,36 @@ export default function AssignedOrders() {
       };
       toast.success(statusMessages[newStatus] || "Status updated successfully!");
       await loadOrders();
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || "Failed to update status");
+    } catch (err) {
+      toast.error(getErrorMessage(err) || "Failed to update status");
     } finally {
       setActionLoading(null);
     }
   }
 
+  // Open invoice modal
+  function openInvoiceModal(order: Order) {
+    setSelectedOrder(order);
+    setShowInvoiceModal(true);
+  }
+
   // Generate invoice
-  async function handleGenerateInvoice(orderId: string) {
-    setActionLoading(orderId);
+  async function handleGenerateInvoice() {
+    if (!selectedOrder) return;
+
+    setActionLoading(selectedOrder.id);
     try {
       const token = getToken();
       await axios.post(
-        `${import.meta.env.VITE_API_BASE}/orders/${orderId}/invoice`,
+        `${import.meta.env.VITE_API_BASE}/orders/${selectedOrder.id}/invoice`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
+      setShowInvoiceModal(false);
       toast.success("Invoice generated and sent to customer!");
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || "Failed to generate invoice");
+    } catch (err) {
+      toast.error(getErrorMessage(err) || "Failed to generate invoice");
     } finally {
       setActionLoading(null);
     }
@@ -243,7 +267,7 @@ export default function AssignedOrders() {
       return (
         <div className="order-actions">
           <button
-            onClick={() => handleGenerateInvoice(order.id)}
+            onClick={() => openInvoiceModal(order)}
             disabled={isLoading}
             className="action-btn invoice-btn"
           >
@@ -330,131 +354,48 @@ export default function AssignedOrders() {
         </div>
       </div>
 
-      {/* Accept Modal */}
-      {showAcceptModal && selectedOrder && (
-        <div className="modal-overlay" onClick={() => setShowAcceptModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Accept Order #{selectedOrder.woo_order_id}</h3>
-            <p>Confirm you want to accept this order for delivery?</p>
-            <div className="modal-order-details">
-              <p><strong>Customer:</strong> {selectedOrder.customer_name}</p>
-              <p><strong>Address:</strong> {selectedOrder.address_text}</p>
-              <p><strong>Amount:</strong> R {parseFloat(selectedOrder.amount_total).toFixed(2)}</p>
-            </div>
-            <div className="modal-actions">
-              <button
-                onClick={() => setShowAcceptModal(false)}
-                className="modal-btn cancel-btn"
-                disabled={actionLoading === selectedOrder.id}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAccept}
-                className="modal-btn confirm-btn accept-confirm"
-                disabled={actionLoading === selectedOrder.id}
-              >
-                {actionLoading === selectedOrder.id ? "Accepting..." : "✓ Confirm Accept"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modal Components */}
+      <AcceptOrderModal
+        isOpen={showAcceptModal}
+        order={selectedOrder}
+        isLoading={selectedOrder ? actionLoading === selectedOrder.id : false}
+        onConfirm={handleAccept}
+        onClose={() => setShowAcceptModal(false)}
+      />
 
-      {/* Reject Modal */}
-      {showRejectModal && selectedOrder && (
-        <div className="modal-overlay" onClick={() => setShowRejectModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Reject Order #{selectedOrder.woo_order_id}</h3>
-            <p>Please provide a reason for rejecting this order:</p>
-            <textarea
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="e.g., Out of delivery area, No capacity, etc."
-              rows={4}
-              className="reject-textarea"
-            />
-            <div className="modal-actions">
-              <button
-                onClick={() => setShowRejectModal(false)}
-                className="modal-btn cancel-btn"
-                disabled={actionLoading === selectedOrder.id}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleReject}
-                className="modal-btn confirm-btn"
-                disabled={actionLoading === selectedOrder.id || !rejectReason.trim()}
-              >
-                {actionLoading === selectedOrder.id ? "Rejecting..." : "Confirm Reject"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <RejectOrderModal
+        isOpen={showRejectModal}
+        order={selectedOrder}
+        reason={rejectReason}
+        isLoading={selectedOrder ? actionLoading === selectedOrder.id : false}
+        onReasonChange={setRejectReason}
+        onConfirm={handleReject}
+        onClose={() => setShowRejectModal(false)}
+      />
 
-      {/* Pickup Modal */}
-      {showPickupModal && selectedOrder && (
-        <div className="modal-overlay" onClick={() => setShowPickupModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Mark Order as Picked Up</h3>
-            <p>Confirm you have picked up order #{selectedOrder.woo_order_id}?</p>
-            <div className="modal-order-details">
-              <p><strong>Customer:</strong> {selectedOrder.customer_name}</p>
-              <p><strong>Delivery Address:</strong> {selectedOrder.address_text}</p>
-            </div>
-            <div className="modal-actions">
-              <button
-                onClick={() => setShowPickupModal(false)}
-                className="modal-btn cancel-btn"
-                disabled={actionLoading === selectedOrder.id}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleStatusUpdate("picked_up")}
-                className="modal-btn confirm-btn pickup-confirm"
-                disabled={actionLoading === selectedOrder.id}
-              >
-                {actionLoading === selectedOrder.id ? "Updating..." : "🚚 Confirm Pickup"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <PickupModal
+        isOpen={showPickupModal}
+        order={selectedOrder}
+        isLoading={selectedOrder ? actionLoading === selectedOrder.id : false}
+        onConfirm={() => handleStatusUpdate("picked_up")}
+        onClose={() => setShowPickupModal(false)}
+      />
 
-      {/* Delivered Modal */}
-      {showDeliveredModal && selectedOrder && (
-        <div className="modal-overlay" onClick={() => setShowDeliveredModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Mark Order as Delivered</h3>
-            <p>Confirm you have delivered order #{selectedOrder.woo_order_id}?</p>
-            <div className="modal-order-details">
-              <p><strong>Customer:</strong> {selectedOrder.customer_name}</p>
-              <p><strong>Address:</strong> {selectedOrder.address_text}</p>
-              <p><strong>Amount:</strong> R {parseFloat(selectedOrder.amount_total).toFixed(2)}</p>
-            </div>
-            <p className="modal-note">Invoice will be automatically generated and sent to the customer.</p>
-            <div className="modal-actions">
-              <button
-                onClick={() => setShowDeliveredModal(false)}
-                className="modal-btn cancel-btn"
-                disabled={actionLoading === selectedOrder.id}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleStatusUpdate("delivered")}
-                className="modal-btn confirm-btn delivered-confirm"
-                disabled={actionLoading === selectedOrder.id}
-              >
-                {actionLoading === selectedOrder.id ? "Updating..." : "📦 Confirm Delivery"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DeliveredModal
+        isOpen={showDeliveredModal}
+        order={selectedOrder}
+        isLoading={selectedOrder ? actionLoading === selectedOrder.id : false}
+        onConfirm={() => handleStatusUpdate("delivered")}
+        onClose={() => setShowDeliveredModal(false)}
+      />
+
+      <InvoiceModal
+        isOpen={showInvoiceModal}
+        order={selectedOrder}
+        isLoading={selectedOrder ? actionLoading === selectedOrder.id : false}
+        onConfirm={handleGenerateInvoice}
+        onClose={() => setShowInvoiceModal(false)}
+      />
     </div>
   );
 }
